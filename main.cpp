@@ -2,62 +2,76 @@
 #include <pthread.h>
 #include <stdlib.h>
 
+#define  BOX_SIZE 6
+#define  NUMBER_OF_PRODUCERS 4
+#define  NUMBER_OF_CONSUMERS 3
+#define  MAX_PRODUCT_NUM 1000000 
+#define  MAX_PRODUCTS 120
 
-static const int BOX_SIZE = 6;
-static const int NUMBER_OF_PRODUCERS = 4;
-static const int NUMBER_OF_CONSUMERS = 3;
-static const int productsBoxSize = 6;
-static const int MAX_PRODUCT_NUM = 1000000; 
-static const int MAX_PRODUCTS = 120;
-
-int numOfItems = 0;
-
+  
 using std::cout;
 using std::endl;
 
-// The products should be placed in a box of size 6.
-int productsBox[productsBoxSize] = {-1,-1,-1,-1,-1,-1};
-pthread_mutex_t mutex_thread = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_thread = PTHREAD_MUTEX_INITIALIZER;  
 
-
-void* producer(void *args) { 
-
-    for (int i = 0; i < MAX_PRODUCTS / NUMBER_OF_PRODUCERS; i++) {
-    	pthread_mutex_lock(&mutex_thread);
-		if (numOfItems < BOX_SIZE){
-			productsBox[numOfItems] = rand() % MAX_PRODUCT_NUM;
-			cout << "Thread " << *(int*)args << " Producing " << productsBox[numOfItems] << endl;
-			++numOfItems;
+class ProductBox
+{
+	public:
+		ProductBox(){
+			 numOfItems = 0;
 		}
-		pthread_mutex_unlock(&mutex_thread);
-	}
-    return NULL;
-}
-
-void* consumer(void *args) {
-	
-    for (int i = 0; i < MAX_PRODUCTS / NUMBER_OF_CONSUMERS; i++) {
-		pthread_mutex_lock(&mutex_thread);
-		if (numOfItems > 0 ){
-			cout << "Thread " << *(int*)args << " Consuming " << productsBox[numOfItems] << endl;
-			productsBox[numOfItems] = -1;
-			--numOfItems;
+		static void* Produce (void *args)
+		{
+		   int i = 0;
+   			ProductBox& pBox = *(ProductBox*)args;
+			while ( i < MAX_PRODUCTS / NUMBER_OF_PRODUCERS) {
+				pthread_mutex_lock(&mutex_thread);
+				if (pBox.numOfItems < BOX_SIZE){
+					
+					pBox.productsBox[pBox.numOfItems] = rand() % MAX_PRODUCT_NUM;
+					cout << "Thread " << pthread_self() << " Producing " << pBox.productsBox[(pBox.numOfItems)++] << endl;
+					++i;
+					
+				}
+				pthread_mutex_unlock(&mutex_thread);
+				
+			}
+			pthread_exit(NULL);
 		}
-		pthread_mutex_unlock(&mutex_thread);
-   	}
-    return NULL;
-}
+		static void* Consume (void *args)
+		{
+			int i = 0;
+			ProductBox& pBox = *(ProductBox*)args;
+			while ( i < MAX_PRODUCTS / NUMBER_OF_CONSUMERS ) {
+				pthread_mutex_lock(&mutex_thread);
+				if (pBox.numOfItems > 0 ){
+					
+					cout << "Thread " << pthread_self() << " Consuming " << pBox.productsBox[--(pBox.numOfItems)] << endl;
+					pBox.productsBox[pBox.numOfItems] = -1;
+					++i;
+					
+				}
+				pthread_mutex_unlock(&mutex_thread);
+
+		   	}
+			pthread_exit(NULL);
+		}
+	private:
+		int numOfItems;
+		int productsBox[BOX_SIZE];	
+};
+
 
 int main(){
+
 	pthread_t producer_id[NUMBER_OF_PRODUCERS];
     pthread_t consumer_id[NUMBER_OF_CONSUMERS];
     int index;
-    
-
-    
+	ProductBox* pBox = new ProductBox();
     // produceR
     for (index = 0; index < NUMBER_OF_PRODUCERS; ++index) {
-    	int rc = pthread_create(&producer_id[index], NULL, producer, &index);
+    	
+    	int rc = pthread_create(&producer_id[index], NULL, ProductBox::Produce, pBox);
         if (rc) {
              cout << "Error:unable to create thread,producer" << rc << endl;
              exit(-1);
@@ -66,23 +80,22 @@ int main(){
     
     // consumeR
     for (index = 0; index < NUMBER_OF_CONSUMERS; ++index) {
-		int rc = pthread_create(&consumer_id[index], NULL, consumer, &index);
+		int rc = pthread_create(&consumer_id[index], NULL, ProductBox::Consume, pBox);
         if (rc) {
              cout << "Error:unable to create thread,consumer" << rc << endl;
              exit(-1);
         }
     }
- 	
+ 	for (index = 0; index < NUMBER_OF_PRODUCERS; ++index)
+		pthread_join(producer_id[index], NULL);
  	for (index = 0; index < NUMBER_OF_CONSUMERS ; ++index)
         pthread_join(consumer_id[index], NULL);
-
-    for (index = 0; index < NUMBER_OF_PRODUCERS; ++index)
-		pthread_join(producer_id[index], NULL);
-	
-    pthread_mutex_destroy(&mutex_thread);
+ 	
+	delete pBox;
 	return 0;
 
 }
+
 
 
 
